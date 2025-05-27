@@ -122,13 +122,56 @@ def sample_radio_queue_items():
 
 
 @pytest.fixture
-def app_instance(mock_ytmusic, temp_state_file):
+def mock_ui_components():
+    """Mock Textual UI components."""
+    # Mock ListView widgets
+    mock_results_widget = Mock()
+    mock_results_widget.clear = Mock()
+    mock_results_widget.append = Mock()
+    mock_results_widget.highlighted_child = None
+    
+    mock_radio_queue_widget = Mock()
+    mock_radio_queue_widget.clear = Mock()
+    mock_radio_queue_widget.append = Mock()
+    
+    # Mock Static widget for status
+    mock_status_widget = Mock()
+    mock_status_widget.update = Mock()
+    
+    # Mock panels
+    mock_radio_panel = Mock()
+    mock_radio_panel.display = False
+    
+    # Create a mapping for query_one calls
+    widget_map = {
+        "#results": mock_results_widget,
+        "#radio-queue": mock_radio_queue_widget,
+        "#status": mock_status_widget,
+        ".radio-panel": mock_radio_panel
+    }
+    
+    return widget_map
+
+
+@pytest.fixture
+def app_instance(mock_ytmusic, temp_state_file, mock_ui_components):
     """Create a YTMusicTUI app instance for testing."""
     with patch('ytmusic_tui.YTMusic', return_value=mock_ytmusic):
         app = YTMusicTUI()
         app.state_file = temp_state_file
         # Set the ytmusic attribute directly for testing
         app.ytmusic = mock_ytmusic
+        
+        # Mock the query_one method to return mock UI components
+        def mock_query_one(selector, widget_type=None):
+            return mock_ui_components.get(selector, Mock())
+        
+        app.query_one = Mock(side_effect=mock_query_one)
+        
+        # Mock other UI methods that might cause issues
+        app.run_action = Mock()
+        app.call_from_thread = Mock()
+        
         return app
 
 

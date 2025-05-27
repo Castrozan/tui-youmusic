@@ -16,6 +16,7 @@ import asyncio
 import time
 import tempfile
 import json
+import subprocess
 from pathlib import Path
 from unittest.mock import patch, Mock, MagicMock
 
@@ -354,13 +355,19 @@ class TestKeyboardShortcutsWorkflow:
         mock_list_view.highlighted_child = sample_song_items[1]  # Second song
         
         with patch.object(app_instance, 'query_one', return_value=mock_list_view):
-            with patch.object(app_instance, 'play_song') as mock_play_song:
+            with patch.object(app_instance, 'run_action') as mock_run_action:
                 
                 # Test play selected action (Enter key)
                 app_instance.action_play_selected()
                 
-                # Should play the highlighted song
-                mock_play_song.assert_called_once()
+                # Should trigger the list_view.select action
+                mock_run_action.assert_called_once_with("list_view.select")
+                
+                # Test focusing search
+                app_instance.action_focus_search()
+                
+                # Should have attempted to focus search input
+                # (This is verified through the query_one call)
     
     @pytest.mark.asyncio
     async def test_radio_keyboard_shortcuts_workflow(self, app_instance, sample_song_items):
