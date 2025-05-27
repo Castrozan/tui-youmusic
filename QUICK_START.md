@@ -29,6 +29,10 @@ python3 ytmusic_tui.py
 | **↑ ↓** | Navigate results |
 | **Enter** | Play selected song |
 | **r** | Stop current song |
+| **R** | **Start radio** from selected song |
+| **N** | **Next song** (radio mode) |
+| **Ctrl+R** | **Stop radio** |
+| **Q** | Toggle radio queue panel |
 | **s** | Focus search bar |
 | **q** | Quit |
 

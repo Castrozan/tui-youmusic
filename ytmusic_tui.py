@@ -13,6 +13,8 @@ import asyncio
 import signal
 import atexit
 import psutil
+import json
+from pathlib import Path
 
 
 class SongItem(ListItem):
@@ -103,10 +105,10 @@ class YTMusicTUI(App):
         Binding("escape", "quit", "Quit"),
         Binding("enter", "play_selected", "Play Song"),
         Binding("s", "focus_search", "Focus Search"),
-        Binding("r", "stop_playback", "Stop Current Song"),
+        Binding("ctrl+s", "stop_all_music", "Stop Song"),
         Binding("p", "resume_playback", "Resume Last Song"),
         Binding("R", "start_radio", "Start Radio"),
-        Binding("n", "next_song", "Next Song (Radio)"),
+        Binding("n", "next_song", "Next Song"),
         Binding("ctrl+r", "stop_radio", "Stop Radio"),
         Binding("Q", "toggle_radio_queue", "Toggle Radio Queue"),
     ]
@@ -115,6 +117,9 @@ class YTMusicTUI(App):
         super().__init__()
         self.current_process = None
         self.songs = []
+
+        # State persistence
+        self.state_file = Path.home() / ".ytmusic_tui_state.json"
 
         # Resume functionality
         self.last_played_song = None
@@ -130,11 +135,10 @@ class YTMusicTUI(App):
         self.radio_queue_visible = False
         self.stop_radio_monitoring = False
         
-        # Register cleanup handlers (only once)
-        if not YTMusicTUI._cleanup_registered:
-            self._register_cleanup_handlers()
-            YTMusicTUI._cleanup_registered = True
-
+        # Race condition prevention
+        self.radio_progression_lock = threading.Lock()
+        self.manual_progression_happening = False
+        
     @classmethod
     def _register_cleanup_handlers(cls):
         """Register cleanup handlers for graceful shutdown."""
@@ -200,6 +204,142 @@ class YTMusicTUI(App):
             # Don't let cleanup errors crash the cleanup
             pass
 
+    def save_state(self):
+        """Save current radio state to file."""
+        try:
+            state = {
+                'radio_active': self.radio_active,
+                'radio_queue_visible': self.radio_queue_visible,
+                'radio_queue': [],
+                'radio_current_song': None,
+                'radio_original_song': None,
+                'last_played_song': None,
+                'timestamp': time.time()
+            }
+            
+            # Save radio queue
+            if self.radio_queue:
+                state['radio_queue'] = [
+                    {
+                        'title': song.title,
+                        'artist': song.artist,
+                        'video_id': song.video_id,
+                        'duration': song.duration
+                    }
+                    for song in self.radio_queue
+                ]
+            
+            # Save current radio song
+            if self.radio_current_song:
+                state['radio_current_song'] = {
+                    'title': self.radio_current_song.title,
+                    'artist': self.radio_current_song.artist,
+                    'video_id': self.radio_current_song.video_id,
+                    'duration': self.radio_current_song.duration
+                }
+            
+            # Save original radio song
+            if self.radio_original_song:
+                state['radio_original_song'] = {
+                    'title': self.radio_original_song.title,
+                    'artist': self.radio_original_song.artist,
+                    'video_id': self.radio_original_song.video_id,
+                    'duration': self.radio_original_song.duration
+                }
+            
+            # Save last played song
+            if self.last_played_song:
+                state['last_played_song'] = {
+                    'title': self.last_played_song.title,
+                    'artist': self.last_played_song.artist,
+                    'video_id': self.last_played_song.video_id,
+                    'duration': self.last_played_song.duration
+                }
+            
+            with open(self.state_file, 'w') as f:
+                json.dump(state, f, indent=2)
+                
+        except Exception as e:
+            pass  # Don't crash on save errors
+
+    def load_state(self):
+        """Load saved state from file."""
+        try:
+            if not self.state_file.exists():
+                return False
+                
+            with open(self.state_file, 'r') as f:
+                state = json.load(f)
+            
+            # Check if state is recent (within last 24 hours)
+            if time.time() - state.get('timestamp', 0) > 86400:
+                return False
+            
+            # Restore radio state
+            self.radio_active = state.get('radio_active', False)
+            self.radio_queue_visible = state.get('radio_queue_visible', False)
+            
+            # Restore radio queue
+            self.radio_queue = []
+            for song_data in state.get('radio_queue', []):
+                song = SongItem(
+                    song_data['title'],
+                    song_data['artist'],
+                    song_data['video_id'],
+                    song_data.get('duration')
+                )
+                self.radio_queue.append(song)
+            
+            # Restore current radio song
+            if state.get('radio_current_song'):
+                song_data = state['radio_current_song']
+                self.radio_current_song = SongItem(
+                    song_data['title'],
+                    song_data['artist'],
+                    song_data['video_id'],
+                    song_data.get('duration')
+                )
+            
+            # Restore original radio song
+            if state.get('radio_original_song'):
+                song_data = state['radio_original_song']
+                self.radio_original_song = SongItem(
+                    song_data['title'],
+                    song_data['artist'],
+                    song_data['video_id'],
+                    song_data.get('duration')
+                )
+            
+            # Restore last played song
+            if state.get('last_played_song'):
+                song_data = state['last_played_song']
+                self.last_played_song = SongItem(
+                    song_data['title'],
+                    song_data['artist'],
+                    song_data['video_id'],
+                    song_data.get('duration')
+                )
+            
+            return True
+            
+        except Exception as e:
+            return False
+
+    def check_background_playback(self):
+        """Check if mpv is still running in background."""
+        try:
+            for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+                try:
+                    if proc.info['name'] == 'mpv':
+                        cmdline = ' '.join(proc.info['cmdline'] or [])
+                        if 'youtube.com' in cmdline or '--no-video' in cmdline:
+                            return True
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+        except ImportError:
+            pass
+        return False
+
     def compose(self) -> ComposeResult:
         """Create child widgets for the app."""
         yield Header()
@@ -225,15 +365,36 @@ class YTMusicTUI(App):
         try:
             # Try to initialize YTMusic (will work without authentication)
             self.ytmusic = YTMusic()
-            self.update_status("Ready to search! Type your query and press Enter.")
+            
+            # Check if there's background playback and load state
+            background_playback = self.check_background_playback()
+            state_loaded = self.load_state()
+            
+            if background_playback and state_loaded and self.radio_active:
+                # Show radio queue if state was restored
+                if self.radio_queue_visible:
+                    self.query_one(".radio-panel").display = True
+                    # Update the radio queue display after mounting is complete
+                    self.call_after_refresh(self.update_radio_queue_display)
+                
+                # Set monitoring flag to allow radio progression
+                self.stop_radio_monitoring = False
+                
+                self.update_status(f"📻 Resumed radio session! Playing in background. Queue: {len(self.radio_queue)} songs")
+            elif background_playback:
+                self.update_status("🎵 Music playing in background. Use ^s to stop or search for new songs.")
+            else:
+                self.update_status("Ready to search! Type your query and press Enter.")
+                
         except Exception as e:
             self.update_status(f"Error initializing YouTube Music: {str(e)}")
         
         # Focus the search input
         self.query_one("#search-input", Input).focus()
         
-        # Hide radio queue initially
-        self.query_one(".radio-panel").display = False
+        # Hide radio queue initially if no state was loaded
+        if not (self.radio_active and self.radio_queue_visible):
+            self.query_one(".radio-panel").display = False
 
     def update_status(self, message: str) -> None:
         """Update the status message."""
@@ -288,7 +449,7 @@ class YTMusicTUI(App):
 
             if self.songs:
                 results_widget.index = 0
-                self.update_status(f"Found {len(self.songs)} songs. Use ↑↓ to navigate, Enter to play.")
+                self.update_status(f"Found {len(self.songs)} songs. Use Tab and ↑↓ to navigate, Enter to play.")
             else:
                 self.update_status("No valid songs found in results.")
                 
@@ -306,8 +467,8 @@ class YTMusicTUI(App):
     async def play_song(self, song_item: SongItem, from_radio=False) -> None:
         """Play the selected song using mpv."""
         try:
-            # Stop current playback if any
-            await self.stop_current_playback()
+            # Stop ALL existing music to prevent overlaps
+            await self.stop_all_existing_music()
             
             url = f"https://www.youtube.com/watch?v={song_item.video_id}"
             
@@ -335,6 +496,7 @@ class YTMusicTUI(App):
                     # Track this process for cleanup
                     YTMusicTUI._active_processes.append(self.current_process)
                     
+                    # Wait for process and handle radio progression
                     self.current_process.wait()
                     
                     # Remove from tracking when done
@@ -343,9 +505,24 @@ class YTMusicTUI(App):
                     except ValueError:
                         pass
                     
-                    # If radio is active and song ended naturally (not stopped), play next
-                    if self.radio_active and not self.stop_radio_monitoring:
-                        self.call_from_thread(self.play_next_radio_song)
+                    # Check if radio auto-progression should happen
+                    # Use lock to prevent race condition with manual progression
+                    with self.radio_progression_lock:
+                        should_auto_progress = (
+                            self.radio_active and 
+                            not self.stop_radio_monitoring and 
+                            from_radio and 
+                            not self.manual_progression_happening
+                        )
+                        
+                        if should_auto_progress:
+                            # Set flag to prevent other threads from progressing
+                            self.manual_progression_happening = True
+                            
+                            # Save state before playing next song
+                            self.call_from_thread(self.save_state)
+                            # Schedule next song
+                            self.call_from_thread(self.auto_play_next_radio_song)
                         
                 except Exception as e:
                     self.call_from_thread(self.update_status, f"Playback error: {str(e)}")
@@ -353,36 +530,53 @@ class YTMusicTUI(App):
             # Start playback in background thread
             threading.Thread(target=play_with_mpv, daemon=True).start()
             
+            # Save state after starting playback
+            self.save_state()
+            
         except Exception as e:
             self.update_status(f"Error starting playback: {str(e)}")
 
     async def stop_current_playback(self) -> None:
-        """Stop current mpv playback."""
+        """Disconnect from current playback (let it continue in background)."""
+        # Save state before disconnecting
+        self.save_state()
+        
         if self.current_process:
             try:
-                # Save radio state for resume functionality
-                self.was_radio_active = self.radio_active
-                if self.radio_active:
-                    self.radio_state_when_stopped = {
-                        'queue': self.radio_queue.copy(),
-                        'current_song': self.radio_current_song,
-                        'original_song': self.radio_original_song,
-                        'queue_visible': self.radio_queue_visible
-                    }
-                
-                # Remove from tracking list first
+                # Remove from tracking list (disconnect, don't kill)
                 try:
                     YTMusicTUI._active_processes.remove(self.current_process)
                 except ValueError:
                     pass
                 
-                # Terminate the process
-                self.current_process.terminate()
+                # Don't terminate the process - let it continue in background
                 self.current_process = None
-                self.stop_radio_monitoring = True  # Signal to stop radio monitoring
-                self.update_status("⏹️  Playback stopped. Press 'p' to resume.")
+                self.update_status("⏹️  Disconnected from playback. Music continues in background. Press 'p' to resume or ^s to stop.")
             except:
                 pass
+
+    async def stop_all_existing_music(self) -> None:
+        """Stop all existing music to prevent overlaps when starting new music."""
+        try:
+            # Stop current process if tracked
+            if self.current_process:
+                try:
+                    self.current_process.terminate()
+                    self.current_process = None
+                except:
+                    pass
+            
+            # Kill all mpv processes to prevent overlaps
+            for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+                try:
+                    if proc.info['name'] == 'mpv':
+                        cmdline = ' '.join(proc.info['cmdline'] or [])
+                        if 'youtube.com' in cmdline or '--no-video' in cmdline:
+                            proc.terminate()
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+        except:
+            pass  # Don't let this block new music from starting
 
     async def start_radio(self, song_item: SongItem = None) -> None:
         """Start radio mode based on current or provided song."""
@@ -457,6 +651,10 @@ class YTMusicTUI(App):
 
     async def stop_radio(self) -> None:
         """Stop radio mode."""
+        # Reset progression flag
+        with self.radio_progression_lock:
+            self.manual_progression_happening = False
+            
         self.radio_active = False
         self.radio_queue = []
         self.radio_current_song = None
@@ -474,19 +672,59 @@ class YTMusicTUI(App):
         self.update_status("📻 Radio stopped.")
 
     async def play_next_radio_song(self) -> None:
-        """Play the next song in radio queue."""
+        """Play the next song in radio queue (manual progression)."""
         if not self.radio_active or not self.radio_queue:
             return
         
-        # Check if we need to fetch more songs
-        if len(self.radio_queue) < 5:
-            await self.fetch_more_radio_songs()
+        # Use lock to prevent race condition with automatic progression
+        with self.radio_progression_lock:
+            if self.manual_progression_happening:
+                # Another progression is already happening
+                return
+            
+            # Set flag to prevent automatic progression
+            self.manual_progression_happening = True
         
-        # Play next song
-        if self.radio_queue:
-            next_song = self.radio_queue.pop(0)
-            await self.play_song(next_song, from_radio=True)
-            await self.update_radio_queue_display()
+        try:
+            # Check if we need to fetch more songs
+            if len(self.radio_queue) < 5:
+                await self.fetch_more_radio_songs()
+            
+            # Play next song
+            if self.radio_queue:
+                next_song = self.radio_queue.pop(0)
+                await self.play_song(next_song, from_radio=True)
+                await self.update_radio_queue_display()
+                # Save state after radio progression
+                self.save_state()
+        finally:
+            # Always clear the flag when done
+            with self.radio_progression_lock:
+                self.manual_progression_happening = False
+
+    async def auto_play_next_radio_song(self) -> None:
+        """Play the next song in radio queue (automatic progression from thread)."""
+        if not self.radio_active or not self.radio_queue:
+            with self.radio_progression_lock:
+                self.manual_progression_happening = False
+            return
+        
+        try:
+            # Check if we need to fetch more songs
+            if len(self.radio_queue) < 5:
+                await self.fetch_more_radio_songs()
+            
+            # Play next song
+            if self.radio_queue:
+                next_song = self.radio_queue.pop(0)
+                await self.play_song(next_song, from_radio=True)
+                await self.update_radio_queue_display()
+                # Save state after radio progression
+                self.save_state()
+        finally:
+            # Always clear the flag when done
+            with self.radio_progression_lock:
+                self.manual_progression_happening = False
 
     async def fetch_more_radio_songs(self) -> None:
         """Fetch more songs for radio queue when running low."""
@@ -561,9 +799,59 @@ class YTMusicTUI(App):
         """Action to focus the search input."""
         self.query_one("#search-input", Input).focus()
 
-    async def action_stop_playback(self) -> None:
-        """Action to stop current playback."""
-        await self.stop_current_playback()
+    async def action_stop_all_music(self) -> None:
+        """Action to actually stop all music."""
+        try:
+            # Reset progression flag first
+            with self.radio_progression_lock:
+                self.manual_progression_happening = False
+                
+            # Stop current process if tracked
+            if self.current_process:
+                try:
+                    self.current_process.terminate()
+                    self.current_process = None
+                except:
+                    pass
+            
+            # Kill all mpv processes
+            killed_count = 0
+            for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+                try:
+                    if proc.info['name'] == 'mpv':
+                        cmdline = ' '.join(proc.info['cmdline'] or [])
+                        if 'youtube.com' in cmdline or '--no-video' in cmdline:
+                            proc.terminate()
+                            killed_count += 1
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+            
+            # Clear radio state
+            self.radio_active = False
+            self.radio_queue = []
+            self.radio_current_song = None
+            self.radio_original_song = None
+            self.stop_radio_monitoring = True
+            
+            # Clear radio queue display
+            radio_queue_widget = self.query_one("#radio-queue", ListView)
+            radio_queue_widget.clear()
+            
+            # Hide radio queue panel
+            self.query_one(".radio-panel").display = False
+            self.radio_queue_visible = False
+            
+            # Clear saved state since music is stopped
+            if self.state_file.exists():
+                self.state_file.unlink()
+            
+            if killed_count > 0:
+                self.update_status(f"🛑 Stopped music. {killed_count} process(es) terminated.")
+            else:
+                self.update_status("🛑 Music stopped.")
+                
+        except Exception as e:
+            self.update_status(f"❌ Error stopping music: {str(e)}")
 
     async def action_resume_playback(self) -> None:
         """Action to resume the last played song."""
@@ -631,11 +919,11 @@ class YTMusicTUI(App):
 
     def action_quit(self) -> None:
         """Action to quit the application."""
-        # Stop radio monitoring
-        self.stop_radio_monitoring = True
+        # Save state before quitting so music can continue
+        self.save_state()
         
-        # Cleanup all processes before quitting
-        YTMusicTUI._cleanup_all_processes()
+        # Don't cleanup processes - let music continue in background
+        self.update_status("👋 App closed. Music continues in background.")
         
         self.exit()
 
