@@ -453,26 +453,26 @@ class YTMusicTUI(App):
         """Action to stop current playback."""
         await self.stop_current_playback()
 
-    def action_start_radio(self) -> None:
+    async def action_start_radio(self) -> None:
         """Action to start radio based on current song."""
         if self.radio_active:
             self.update_status("📻 Radio is already active!")
             return
-        self.run_coroutine(self.start_radio())
+        await self.start_radio()
 
-    def action_next_song(self) -> None:
+    async def action_next_song(self) -> None:
         """Action to play next song in radio."""
         if not self.radio_active:
             self.update_status("❌ Radio is not active.")
             return
-        self.run_coroutine(self.play_next_radio_song())
+        await self.play_next_radio_song()
 
-    def action_stop_radio(self) -> None:
+    async def action_stop_radio(self) -> None:
         """Action to stop radio mode."""
         if not self.radio_active:
             self.update_status("❌ Radio is not active.")
             return
-        self.run_coroutine(self.stop_radio())
+        await self.stop_radio()
 
     def action_toggle_radio_queue(self) -> None:
         """Action to toggle radio queue visibility."""
@@ -484,8 +484,6 @@ class YTMusicTUI(App):
         else:
             radio_panel.display = True
             self.radio_queue_visible = True
-            if self.radio_active:
-                self.run_coroutine(self.update_radio_queue_display())
             self.update_status("📻 Radio queue shown.")
 
     def action_quit(self) -> None:
