@@ -49,13 +49,13 @@ def mock_ytmusic():
                 "title": "Radio Song 1",
                 "artists": [{"name": "Radio Artist 1"}],
                 "videoId": "radio_id_1",
-                "duration": "3:45"
+                "duration": {"text": "3:45"}
             },
             {
                 "title": "Radio Song 2",
                 "artists": [{"name": "Radio Artist 2"}],
                 "videoId": "radio_id_2", 
-                "duration": "4:00"
+                "duration": {"text": "4:00"}
             }
         ]
     }
@@ -241,18 +241,18 @@ TEST_RADIO_TRACKS = [
         "title": "We Will Rock You",
         "artists": [{"name": "Queen"}],
         "videoId": "yydlX7c8HbY",
-        "duration": "2:02"
+        "duration": {"text": "2:02"}
     },
     {
         "title": "Another One Bites The Dust",
         "artists": [{"name": "Queen"}],
         "videoId": "fJ9rUzIMcZQ",
-        "duration": "3:35"
+        "duration": {"text": "3:35"}
     },
     {
         "title": "Don't Stop Me Now",
         "artists": [{"name": "Queen"}],
         "videoId": "HgzGwKwLmgM",
-        "duration": "3:29"
+        "duration": {"text": "3:29"}
     }
 ] 
