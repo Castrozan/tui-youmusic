@@ -98,7 +98,7 @@ class TestSearchAndPlayWorkflow:
             
             # Should handle gracefully
             assert len(app_instance.songs) == 0
-            mock_update_status.assert_called_with("No songs found for 'nonexistentquerythatreturnsnothing'")
+            mock_update_status.assert_called_with("No results found. Try a different search term.")
     
     @pytest.mark.asyncio
     async def test_multiple_search_workflow(self, app_instance):
