@@ -104,6 +104,7 @@ class YTMusicTUI(App):
         Binding("enter", "play_selected", "Play Song"),
         Binding("s", "focus_search", "Focus Search"),
         Binding("r", "stop_playback", "Stop Current Song"),
+        Binding("p", "resume_playback", "Resume Last Song"),
         Binding("R", "start_radio", "Start Radio"),
         Binding("n", "next_song", "Next Song (Radio)"),
         Binding("ctrl+r", "stop_radio", "Stop Radio"),
@@ -114,6 +115,11 @@ class YTMusicTUI(App):
         super().__init__()
         self.current_process = None
         self.songs = []
+
+        # Resume functionality
+        self.last_played_song = None
+        self.was_radio_active = False
+        self.radio_state_when_stopped = None
         
         # Radio functionality
         self.radio_active = False
@@ -305,6 +311,9 @@ class YTMusicTUI(App):
             
             url = f"https://www.youtube.com/watch?v={song_item.video_id}"
             
+            # Track the song for resume functionality
+            self.last_played_song = song_item
+            
             # Update current song reference
             if from_radio:
                 self.radio_current_song = song_item
@@ -351,6 +360,16 @@ class YTMusicTUI(App):
         """Stop current mpv playback."""
         if self.current_process:
             try:
+                # Save radio state for resume functionality
+                self.was_radio_active = self.radio_active
+                if self.radio_active:
+                    self.radio_state_when_stopped = {
+                        'queue': self.radio_queue.copy(),
+                        'current_song': self.radio_current_song,
+                        'original_song': self.radio_original_song,
+                        'queue_visible': self.radio_queue_visible
+                    }
+                
                 # Remove from tracking list first
                 try:
                     YTMusicTUI._active_processes.remove(self.current_process)
@@ -361,7 +380,7 @@ class YTMusicTUI(App):
                 self.current_process.terminate()
                 self.current_process = None
                 self.stop_radio_monitoring = True  # Signal to stop radio monitoring
-                self.update_status("⏹️  Playback stopped.")
+                self.update_status("⏹️  Playback stopped. Press 'p' to resume.")
             except:
                 pass
 
@@ -545,6 +564,37 @@ class YTMusicTUI(App):
     async def action_stop_playback(self) -> None:
         """Action to stop current playback."""
         await self.stop_current_playback()
+
+    async def action_resume_playback(self) -> None:
+        """Action to resume the last played song."""
+        if not self.last_played_song:
+            self.update_status("❌ No song to resume. Play a song first.")
+            return
+        
+        # If radio was active when stopped, restore radio state
+        if self.was_radio_active and self.radio_state_when_stopped:
+            self.update_status(f"🔄 Resuming radio with: {self.last_played_song.title}...")
+            
+            # Restore radio state
+            self.radio_active = True
+            self.radio_queue = self.radio_state_when_stopped['queue']
+            self.radio_current_song = self.radio_state_when_stopped['current_song']
+            self.radio_original_song = self.radio_state_when_stopped['original_song']
+            self.radio_queue_visible = self.radio_state_when_stopped['queue_visible']
+            self.stop_radio_monitoring = False
+            
+            # Show radio queue if it was visible
+            if self.radio_queue_visible:
+                self.query_one(".radio-panel").display = True
+                await self.update_radio_queue_display()
+            
+            # Resume playing the song
+            await self.play_song(self.last_played_song, from_radio=True)
+            
+        else:
+            # Resume regular playback
+            self.update_status(f"▶️  Resuming: {self.last_played_song.title} - {self.last_played_song.artist}")
+            await self.play_song(self.last_played_song)
 
     async def action_start_radio(self) -> None:
         """Action to start radio based on current song."""
