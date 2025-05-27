@@ -67,7 +67,6 @@ class YTMusicTUI(App):
     .search-label, .results-label, .radio-label {
         text-style: bold;
         color: $accent;
-        margin-bottom: 1;
     }
     
     #status {
