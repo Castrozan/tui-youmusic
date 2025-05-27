@@ -705,23 +705,31 @@ class YTMusicTUI(App):
 
     async def auto_play_next_radio_song(self) -> None:
         """Play the next song in radio queue (automatic progression from thread)."""
-        if not self.radio_active or not self.radio_queue:
+        # Check if radio is still active and not being stopped
+        if not self.radio_active or not self.radio_queue or self.stop_radio_monitoring:
             with self.radio_progression_lock:
                 self.manual_progression_happening = False
             return
         
         try:
+            # Double-check radio state hasn't changed while we were waiting
+            if not self.radio_active or self.stop_radio_monitoring:
+                return
+                
             # Check if we need to fetch more songs
             if len(self.radio_queue) < 5:
                 await self.fetch_more_radio_songs()
             
-            # Play next song
-            if self.radio_queue:
+            # Final check before playing next song
+            if self.radio_active and not self.stop_radio_monitoring and self.radio_queue:
                 next_song = self.radio_queue.pop(0)
                 await self.play_song(next_song, from_radio=True)
                 await self.update_radio_queue_display()
                 # Save state after radio progression
                 self.save_state()
+        except Exception as e:
+            # Handle any errors gracefully to prevent app crashes
+            self.call_from_thread(self.update_status, f"Warning: Radio auto-progression error: {str(e)}")
         finally:
             # Always clear the flag when done
             with self.radio_progression_lock:
@@ -730,7 +738,8 @@ class YTMusicTUI(App):
     async def fetch_more_radio_songs(self) -> None:
         """Fetch more songs for radio queue when running low."""
         try:
-            if not self.radio_current_song:
+            # Check if radio is still active and we have current song info
+            if not self.radio_current_song or not self.radio_active or self.stop_radio_monitoring:
                 return
             
             # Get more songs based on current playing song
@@ -740,9 +749,18 @@ class YTMusicTUI(App):
             )
             
             if watch_playlist and 'tracks' in watch_playlist:
-                radio_queue_widget = self.query_one("#radio-queue", ListView)
+                # Check if radio queue widget is still accessible
+                try:
+                    radio_queue_widget = self.query_one("#radio-queue", ListView)
+                except:
+                    # Widget might not be available if UI is being updated
+                    return
                 
                 for track in watch_playlist['tracks'][:15]:
+                    # Check if radio is still active before adding each song
+                    if not self.radio_active or self.stop_radio_monitoring:
+                        break
+                        
                     if track.get('videoId'):
                         title = track.get('title', 'Unknown Title')
                         
@@ -759,36 +777,52 @@ class YTMusicTUI(App):
                             radio_song = SongItem(title, artist, video_id, duration)
                             self.radio_queue.append(radio_song)
                             
-                            # Add to UI
-                            queue_item = RadioQueueItem(title, artist, video_id, duration)
-                            radio_queue_widget.append(queue_item)
+                            # Add to UI only if radio queue is visible
+                            if self.radio_queue_visible:
+                                try:
+                                    queue_item = RadioQueueItem(title, artist, video_id, duration)
+                                    radio_queue_widget.append(queue_item)
+                                except:
+                                    # Ignore UI errors during state transitions
+                                    pass
                 
         except Exception as e:
+            # Make error message more specific and don't crash
             self.update_status(f"Warning: Could not fetch more radio songs: {str(e)}")
 
     async def update_radio_queue_display(self) -> None:
         """Update the radio queue display."""
-        if not self.radio_queue_visible:
+        # Check if we should update display and if radio queue is visible
+        if not self.radio_queue_visible or self.stop_radio_monitoring:
             return
         
-        radio_queue_widget = self.query_one("#radio-queue", ListView)
-        radio_queue_widget.clear()
-        
-        # Add current song at top (if radio is active)
-        if self.radio_active and self.radio_current_song:
-            current_item = RadioQueueItem(
-                self.radio_current_song.title,
-                self.radio_current_song.artist,
-                self.radio_current_song.video_id,
-                self.radio_current_song.duration,
-                is_current=True
-            )
-            radio_queue_widget.append(current_item)
-        
-        # Add queue songs
-        for song in self.radio_queue:
-            queue_item = RadioQueueItem(song.title, song.artist, song.video_id, song.duration)
-            radio_queue_widget.append(queue_item)
+        try:
+            radio_queue_widget = self.query_one("#radio-queue", ListView)
+            radio_queue_widget.clear()
+            
+            # Add current song at top (if radio is active)
+            if self.radio_active and self.radio_current_song:
+                current_item = RadioQueueItem(
+                    self.radio_current_song.title,
+                    self.radio_current_song.artist,
+                    self.radio_current_song.video_id,
+                    self.radio_current_song.duration,
+                    is_current=True
+                )
+                radio_queue_widget.append(current_item)
+            
+            # Add queue songs
+            for song in self.radio_queue:
+                # Check if we should continue (radio might be stopped mid-update)
+                if not self.radio_active or self.stop_radio_monitoring:
+                    break
+                    
+                queue_item = RadioQueueItem(song.title, song.artist, song.video_id, song.duration)
+                radio_queue_widget.append(queue_item)
+                
+        except Exception as e:
+            # Ignore display update errors during state transitions
+            pass
 
     def action_play_selected(self) -> None:
         """Action to play the currently selected song."""
@@ -827,30 +861,32 @@ class YTMusicTUI(App):
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     pass
             
-            # Clear radio state
-            self.radio_active = False
-            self.radio_queue = []
-            self.radio_current_song = None
-            self.radio_original_song = None
-            self.stop_radio_monitoring = True
-            
-            # Clear radio queue display
-            radio_queue_widget = self.query_one("#radio-queue", ListView)
-            radio_queue_widget.clear()
-            
-            # Hide radio queue panel
-            self.query_one(".radio-panel").display = False
-            self.radio_queue_visible = False
-            
-            # Clear saved state since music is stopped
-            if self.state_file.exists():
-                self.state_file.unlink()
-            
-            if killed_count > 0:
-                self.update_status(f"🛑 Stopped music. {killed_count} process(es) terminated.")
-            else:
-                self.update_status("🛑 Music stopped.")
+            # Save radio state before pausing (instead of destroying it)
+            if self.radio_active:
+                self.was_radio_active = True
+                self.radio_state_when_stopped = {
+                    'queue': self.radio_queue.copy(),
+                    'current_song': self.radio_current_song,
+                    'original_song': self.radio_original_song,
+                    'queue_visible': self.radio_queue_visible
+                }
                 
+                # Pause radio (don't destroy state)
+                self.radio_active = False
+                self.stop_radio_monitoring = True
+                
+                # Update UI to show radio is paused
+                self.update_status(f"🛑 Music stopped. Radio paused with {len(self.radio_queue)} songs. Press 'p' to resume.")
+            else:
+                # Clear saved state since music is stopped and no radio was active
+                if self.state_file.exists():
+                    self.state_file.unlink()
+                
+                if killed_count > 0:
+                    self.update_status(f"🛑 Stopped music. {killed_count} process(es) terminated.")
+                else:
+                    self.update_status("🛑 Music stopped.")
+                    
         except Exception as e:
             self.update_status(f"❌ Error stopping music: {str(e)}")
 
@@ -864,22 +900,34 @@ class YTMusicTUI(App):
         if self.was_radio_active and self.radio_state_when_stopped:
             self.update_status(f"🔄 Resuming radio with: {self.last_played_song.title}...")
             
-            # Restore radio state
-            self.radio_active = True
-            self.radio_queue = self.radio_state_when_stopped['queue']
-            self.radio_current_song = self.radio_state_when_stopped['current_song']
-            self.radio_original_song = self.radio_state_when_stopped['original_song']
-            self.radio_queue_visible = self.radio_state_when_stopped['queue_visible']
-            self.stop_radio_monitoring = False
-            
-            # Show radio queue if it was visible
-            if self.radio_queue_visible:
-                self.query_one(".radio-panel").display = True
-                await self.update_radio_queue_display()
-            
-            # Resume playing the song
-            await self.play_song(self.last_played_song, from_radio=True)
-            
+            try:
+                # Restore radio state
+                self.radio_active = True
+                self.radio_queue = self.radio_state_when_stopped['queue']
+                self.radio_current_song = self.radio_state_when_stopped['current_song']
+                self.radio_original_song = self.radio_state_when_stopped['original_song']
+                self.radio_queue_visible = self.radio_state_when_stopped['queue_visible']
+                self.stop_radio_monitoring = False
+                
+                # Show radio queue if it was visible
+                if self.radio_queue_visible:
+                    self.query_one(".radio-panel").display = True
+                    await self.update_radio_queue_display()
+                
+                # Resume playing the song
+                await self.play_song(self.last_played_song, from_radio=True)
+                
+                # Clear pause state after successful resumption
+                self.was_radio_active = False
+                self.radio_state_when_stopped = None
+                
+            except Exception as e:
+                # Handle resume errors gracefully
+                self.update_status(f"❌ Error resuming radio: {str(e)}")
+                # Reset pause state even on error
+                self.was_radio_active = False
+                self.radio_state_when_stopped = None
+                
         else:
             # Resume regular playback
             self.update_status(f"▶️  Resuming: {self.last_played_song.title} - {self.last_played_song.artist}")
