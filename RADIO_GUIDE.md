@@ -20,7 +20,7 @@ python3 ytmusic_tui.py
 
 ### 3. Start Radio
 - Select any song you like
-- Press `Shift+R` to start radio based on that song
+- Press `R` to start radio based on that song
 - 🎉 Radio will immediately start playing similar music!
 
 ## 📻 Radio Features
@@ -46,10 +46,10 @@ python3 ytmusic_tui.py
 
 | Key | Action | Description |
 |-----|--------|-------------|
-| `Shift+R` | **Start Radio** | Begin radio mode from selected song |
+| `R` | **Start Radio** | Begin radio mode from selected song |
 | `N` | **Next Song** | Skip to next song in radio queue |
 | `Ctrl+R` | **Stop Radio** | Completely stop radio mode |
-| `Shift+Q` | **Toggle Queue** | Show/hide radio queue panel |
+| `Q` | **Toggle Queue** | Show/hide radio queue panel |
 | `r` | **Stop Song** | Stop current song (radio continues) |
 
 ## 🎯 Radio Workflow
@@ -57,7 +57,7 @@ python3 ytmusic_tui.py
 ```
 1. Search & Select Song
    ↓
-2. Press Shift+R
+2. Press R
    ↓
 3. Radio Starts Playing Similar Songs
    ↓
@@ -112,7 +112,7 @@ python3 ytmusic_tui.py
 - **Use popular songs** as radio seeds for more diverse recommendations
 
 ### Managing Your Experience
-- **Hide queue panel** with `Shift+Q` if you prefer minimal UI
+- **Hide queue panel** with `Q` if you prefer minimal UI
 - **Skip songs** with `N` to explore different directions
 - **Restart radio** from any new song to change musical direction
 
@@ -131,7 +131,7 @@ python3 ytmusic_tui.py
 > Type: "Bohemian Rhapsody Queen" → Press Enter
 
 # Select the song and start radio
-> Use ↑↓ to select → Press Shift+R
+> Use ↑↓ to select → Press R
 
 # Radio starts!
 📻 Radio: Bohemian Rhapsody | Queue: 19 songs
@@ -143,7 +143,7 @@ python3 ytmusic_tui.py
 
 # Control your radio experience
 > Press N to skip songs
-> Press Shift+Q to hide/show queue
+> Press Q to hide/show queue
 > Press Ctrl+R to stop radio
 ```
 
@@ -161,7 +161,7 @@ python3 ytmusic_tui.py
 
 1. **Launch the app**: `python3 ytmusic_tui.py`
 2. **Find a song you love**
-3. **Press `Shift+R`**
+3. **Press `R`**
 4. **Enjoy continuous music discovery!** 🎉
 
-**Happy listening! 📻🎶** 
+**Happy listening! 📻🎶**

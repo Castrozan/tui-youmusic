@@ -98,10 +98,10 @@ class YTMusicTUI(App):
         Binding("enter", "play_selected", "Play Song"),
         Binding("s", "focus_search", "Focus Search"),
         Binding("r", "stop_playback", "Stop Current Song"),
-        Binding("shift+r", "start_radio", "Start Radio"),
+        Binding("R", "start_radio", "Start Radio"),
         Binding("n", "next_song", "Next Song (Radio)"),
         Binding("ctrl+r", "stop_radio", "Stop Radio"),
-        Binding("shift+q", "toggle_radio_queue", "Toggle Radio Queue"),
+        Binding("Q", "toggle_radio_queue", "Toggle Radio Queue"),
     ]
 
     def __init__(self):

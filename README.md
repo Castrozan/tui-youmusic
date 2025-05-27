@@ -72,30 +72,29 @@ python ytmusic_tui.py
 | Key | Action |
 |-----|--------|
 | `r` | Stop current song |
-| `Shift+R` | **Start radio** based on selected song |
+| `R` | **Start radio** based on selected song |
 | `N` | Next song (radio mode only) |
 | `Ctrl+R` | Stop radio mode |
 
 ### Radio Queue
 | Key | Action |
 |-----|--------|
-| `Shift+Q` | Toggle radio queue panel visibility |
-| `Q` | Show/hide radio queue |
+| `Q` | Toggle radio queue panel visibility |
 
 ### How to Use
 
 1. **Search for music:** Type in the search box and press Enter
 2. **Navigate results:** Use ↑/↓ arrow keys to browse songs
 3. **Play a song:** Press Enter on any song
-4. **Start radio:** Press `Shift+R` while a song is selected to start radio mode
+4. **Start radio:** Press `R` while a song is selected to start radio mode
 5. **Enjoy continuous music:** Radio will automatically play similar songs
-6. **Control radio:** Use `N` for next song, `Shift+Q` to see queue, `Ctrl+R` to stop
+6. **Control radio:** Use `N` for next song, `Q` to see queue, `Ctrl+R` to stop
 
 ## 📻 Radio Mode Explained
 
 ### Starting Radio
 - Select any song from search results
-- Press `Shift+R` to start radio based on that song
+- Press `R` to start radio based on that song
 - Radio will immediately start playing similar songs
 - The radio queue panel will automatically appear
 
@@ -109,14 +108,14 @@ python ytmusic_tui.py
 ### Radio Controls
 - **Next Song (`N`):** Skip to next song in radio queue
 - **Stop Radio (`Ctrl+R`):** Completely stop radio mode
-- **Queue Toggle (`Shift+Q`):** Show/hide the radio queue panel
+- **Queue Toggle (`Q`):** Show/hide the radio queue panel
 - **Manual Song Selection:** Selecting any song from search stops radio
 
 ### Radio Queue Panel
 - **Currently Playing:** Shown at top with 🎵 icon
 - **Upcoming Songs:** Listed below current song
 - **Dynamic Updates:** Queue updates as songs play and new ones are fetched
-- **Toggle Visibility:** Can be hidden/shown with `Shift+Q`
+- **Toggle Visibility:** Can be hidden/shown with `Q`
 
 ## 🛠️ Technical Details
 
@@ -184,12 +183,20 @@ python ytmusic_tui.py
 # Navigate and play
 > Use ↑↓ to browse → Press Enter to play
 
-# Start radio
-> Press Shift+R to start Beatles radio
+# Select the song and start radio
+> Use ↑↓ to select → Press R
 
-# Control radio
-> Press N for next song
-> Press Shift+Q to see/hide queue
+# Radio starts!
+📻 Radio: Bohemian Rhapsody | Queue: 19 songs
+🎵 Now Playing: We Will Rock You - Queen
+   Next: Another One Bites The Dust - Queen
+   Next: Don't Stop Me Now - Queen
+   Next: Somebody to Love - Queen
+   ...
+
+# Control your radio experience
+> Press N to skip songs
+> Press Q to hide/show queue
 > Press Ctrl+R to stop radio
 ```
 

@@ -80,10 +80,10 @@ async def test_radio_functionality():
         print("\n" + "=" * 60)
         print("🎉 All radio functionality tests passed!")
         print("\n📻 Radio Features Available:")
-        print("   • Press Shift+R to start song-based radio")
+        print("   • Press R to start song-based radio")
         print("   • Auto-play queue with 20 songs (fetches more when <5 remain)")
         print("   • Press N for next song, Ctrl+R to stop radio")
-        print("   • Press Shift+Q to toggle radio queue visibility")
+        print("   • Press Q to toggle radio queue visibility")
         print("   • Radio stops when manually selecting another song")
         print("\n🎵 Ready to use! Run: python3 ytmusic_tui.py")
         
