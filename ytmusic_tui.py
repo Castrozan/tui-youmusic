@@ -10,6 +10,9 @@ import threading
 import os
 import time
 import asyncio
+import signal
+import atexit
+import psutil
 
 
 class SongItem(ListItem):
@@ -44,6 +47,10 @@ class RadioQueueItem(ListItem):
 
 class YTMusicTUI(App):
     """A Terminal User Interface for YouTube Music."""
+    
+    # Class variable to track all mpv processes across instances
+    _active_processes = []
+    _cleanup_registered = False
     
     CSS = """
     .main-panel {
@@ -117,6 +124,76 @@ class YTMusicTUI(App):
         self.radio_monitor_thread = None
         self.radio_queue_visible = False
         self.stop_radio_monitoring = False
+        
+        # Register cleanup handlers (only once)
+        if not YTMusicTUI._cleanup_registered:
+            self._register_cleanup_handlers()
+            YTMusicTUI._cleanup_registered = True
+
+    @classmethod
+    def _register_cleanup_handlers(cls):
+        """Register cleanup handlers for graceful shutdown."""
+        # Register atexit handler for normal exit
+        atexit.register(cls._cleanup_all_processes)
+        
+        # Register signal handlers for crashes and interrupts
+        def signal_handler(signum, frame):
+            print(f"\n🛑 Received signal {signum}, cleaning up...")
+            cls._cleanup_all_processes()
+            exit(0)
+        
+        # Handle common termination signals
+        signal.signal(signal.SIGINT, signal_handler)   # Ctrl+C
+        signal.signal(signal.SIGTERM, signal_handler)  # Normal termination
+        try:
+            signal.signal(signal.SIGHUP, signal_handler)   # Terminal closed
+        except AttributeError:
+            # SIGHUP not available on Windows
+            pass
+
+    @classmethod
+    def _cleanup_all_processes(cls):
+        """Kill all mpv processes started by this application."""
+        try:
+            # Kill processes we're tracking
+            for process in cls._active_processes:
+                try:
+                    if process.poll() is None:  # Process is still running
+                        process.terminate()
+                        # Give it a moment to terminate gracefully
+                        try:
+                            process.wait(timeout=2)
+                        except subprocess.TimeoutExpired:
+                            process.kill()  # Force kill if it doesn't terminate
+                except:
+                    pass
+            
+            # Clear the process list
+            cls._active_processes.clear()
+            
+            # Also kill any mpv processes that might be running (backup cleanup)
+            try:
+                # Use psutil to find and kill mpv processes
+                for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+                    try:
+                        if proc.info['name'] == 'mpv':
+                            # Check if it's likely our mpv process (playing youtube)
+                            cmdline = ' '.join(proc.info['cmdline'] or [])
+                            if 'youtube.com' in cmdline or '--no-video' in cmdline:
+                                proc.terminate()
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        pass
+            except ImportError:
+                # Fallback if psutil import fails - use pkill
+                try:
+                    subprocess.run(['pkill', '-f', 'mpv.*youtube'], 
+                                 capture_output=True, timeout=5)
+                except:
+                    pass
+                    
+        except Exception as e:
+            # Don't let cleanup errors crash the cleanup
+            pass
 
     def compose(self) -> ComposeResult:
         """Create child widgets for the app."""
@@ -246,7 +323,17 @@ class YTMusicTUI(App):
                         "--no-terminal",
                         url
                     ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    
+                    # Track this process for cleanup
+                    YTMusicTUI._active_processes.append(self.current_process)
+                    
                     self.current_process.wait()
+                    
+                    # Remove from tracking when done
+                    try:
+                        YTMusicTUI._active_processes.remove(self.current_process)
+                    except ValueError:
+                        pass
                     
                     # If radio is active and song ended naturally (not stopped), play next
                     if self.radio_active and not self.stop_radio_monitoring:
@@ -265,6 +352,13 @@ class YTMusicTUI(App):
         """Stop current mpv playback."""
         if self.current_process:
             try:
+                # Remove from tracking list first
+                try:
+                    YTMusicTUI._active_processes.remove(self.current_process)
+                except ValueError:
+                    pass
+                
+                # Terminate the process
                 self.current_process.terminate()
                 self.current_process = None
                 self.stop_radio_monitoring = True  # Signal to stop radio monitoring
@@ -488,15 +582,11 @@ class YTMusicTUI(App):
 
     def action_quit(self) -> None:
         """Action to quit the application."""
-        # Stop any current playback before quitting
-        if self.current_process:
-            try:
-                self.current_process.terminate()
-            except:
-                pass
-        
         # Stop radio monitoring
         self.stop_radio_monitoring = True
+        
+        # Cleanup all processes before quitting
+        YTMusicTUI._cleanup_all_processes()
         
         self.exit()
 

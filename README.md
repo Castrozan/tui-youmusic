@@ -123,12 +123,14 @@ python ytmusic_tui.py
 - **textual** (>=0.44.0) - TUI framework
 - **ytmusicapi** (>=1.3.0) - YouTube Music API
 - **yt-dlp** (>=2023.11.16) - YouTube URL extraction
+- **psutil** (>=5.9.0) - Process management and cleanup
 - **mpv** - Audio playback engine
 
 ### Architecture
 - **Async/Await:** Non-blocking UI with async operations
 - **Threading:** Background audio playback to avoid UI freezing
 - **Process Management:** Proper cleanup of mpv processes
+- **Auto-Cleanup:** Automatic music stopping on app crash or exit
 - **Error Handling:** Graceful error handling and user feedback
 
 ### Radio Implementation
@@ -170,6 +172,11 @@ brew install mpv       # macOS
 - Verify mpv works: `mpv --version`
 - Check system audio settings
 - Try playing a local file with mpv
+
+**Music continues after app crashes:**
+- The app now includes automatic cleanup
+- Music should stop automatically when app exits or crashes
+- If music still plays, run: `pkill -f mpv`
 
 ## 📊 Example Usage
 
