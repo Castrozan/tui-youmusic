@@ -449,9 +449,9 @@ class YTMusicTUI(App):
         """Action to focus the search input."""
         self.query_one("#search-input", Input).focus()
 
-    def action_stop_playback(self) -> None:
+    async def action_stop_playback(self) -> None:
         """Action to stop current playback."""
-        self.run_coroutine(self.stop_current_playback())
+        await self.stop_current_playback()
 
     def action_start_radio(self) -> None:
         """Action to start radio based on current song."""
