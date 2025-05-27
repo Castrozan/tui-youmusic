@@ -139,6 +139,11 @@ class YTMusicTUI(App):
         self.radio_progression_lock = threading.Lock()
         self.manual_progression_happening = False
         
+        # Register cleanup handlers
+        if not YTMusicTUI._cleanup_registered:
+            YTMusicTUI._register_cleanup_handlers()
+            YTMusicTUI._cleanup_registered = True
+
     @classmethod
     def _register_cleanup_handlers(cls):
         """Register cleanup handlers for graceful shutdown."""
@@ -214,6 +219,8 @@ class YTMusicTUI(App):
                 'radio_current_song': None,
                 'radio_original_song': None,
                 'last_played_song': None,
+                'was_radio_active': self.was_radio_active,
+                'radio_state_when_stopped': self.radio_state_when_stopped,
                 'timestamp': time.time()
             }
             
@@ -278,6 +285,8 @@ class YTMusicTUI(App):
             # Restore radio state
             self.radio_active = state.get('radio_active', False)
             self.radio_queue_visible = state.get('radio_queue_visible', False)
+            self.was_radio_active = state.get('was_radio_active', False)
+            self.radio_state_when_stopped = state.get('radio_state_when_stopped')
             
             # Restore radio queue
             self.radio_queue = []
@@ -551,9 +560,11 @@ class YTMusicTUI(App):
                 
                 # Don't terminate the process - let it continue in background
                 self.current_process = None
-                self.update_status("⏹️  Disconnected from playback. Music continues in background. Press 'p' to resume or ^s to stop.")
             except:
                 pass
+        
+        # Always update status regardless of whether there was a process
+        self.update_status("⏹️  Disconnected from playback. Music continues in background. Press 'p' to resume or ^s to stop.")
 
     async def stop_all_existing_music(self) -> None:
         """Stop all existing music to prevent overlaps when starting new music."""
