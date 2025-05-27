@@ -9,11 +9,11 @@ with open("requirements.txt", "r", encoding="utf-8") as fh:
 setup(
     name="tui-youmusic",
     version="1.0.0",
-    author="TUI YouTube Music Player",
+    author="Castrozan",
     description="A beautiful Terminal User Interface for YouTube Music",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/yourusername/tui-youmusic",
+    url="https://github.com/Castrozan/tui-youmusic",
     packages=find_packages(),
     classifiers=[
         "Development Status :: 4 - Beta",
@@ -37,7 +37,7 @@ setup(
     },
     keywords="youtube music player tui terminal audio mpv",
     project_urls={
-        "Bug Reports": "https://github.com/yourusername/tui-youmusic/issues",
-        "Source": "https://github.com/yourusername/tui-youmusic",
+        "Bug Reports": "https://github.com/Castrozan/tui-youmusic/issues",
+        "Source": "https://github.com/Castrozan/tui-youmusic",
     },
 ) 

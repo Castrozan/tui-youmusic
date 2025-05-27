@@ -66,6 +66,7 @@ python ytmusic_tui.py
 | Key | Action |
 |-----|--------|
 | `Type + Enter` | Search for music |
+| `Tab` | Togle list selection |
 | `↑ ↓` | Navigate search results |
 | `Enter` | Play selected song |
 | `s` | Focus search bar |
