@@ -8,6 +8,8 @@ from ytmusicapi import YTMusic
 import subprocess
 import threading
 import os
+import time
+import asyncio
 
 
 class SongItem(ListItem):
@@ -24,10 +26,68 @@ class SongItem(ListItem):
         self.duration = duration
 
 
+class RadioQueueItem(ListItem):
+    """Custom ListItem for displaying radio queue songs."""
+    
+    def __init__(self, title, artist, video_id, duration=None, is_current=False):
+        # Format the display text with radio indicator
+        duration_str = f" ({duration})" if duration else ""
+        prefix = "🎵 " if is_current else "   "
+        display_text = f"{prefix}{title} - {artist}{duration_str}"
+        super().__init__(Static(display_text))
+        self.title = title
+        self.artist = artist
+        self.video_id = video_id
+        self.duration = duration
+        self.is_current = is_current
+
+
 class YTMusicTUI(App):
     """A Terminal User Interface for YouTube Music."""
     
-    CSS_PATH = None
+    CSS = """
+    .main-panel {
+        width: 70%;
+        padding: 1;
+    }
+    
+    .radio-panel {
+        width: 30%;
+        padding: 1;
+        border-left: solid $primary;
+    }
+    
+    .search-label, .results-label, .radio-label {
+        text-style: bold;
+        color: $accent;
+        margin-bottom: 1;
+    }
+    
+    #status {
+        color: $warning;
+        margin: 1 0;
+        text-style: italic;
+    }
+    
+    ListView {
+        border: solid $primary;
+        height: auto;
+    }
+    
+    #radio-queue {
+        min-height: 20;
+    }
+    
+    Input {
+        border: solid $primary;
+    }
+    
+    .radio-current {
+        background: $primary 20%;
+        text-style: bold;
+    }
+    """
+    
     TITLE = "🎵 TUI YouTube Music Player"
     SUB_TITLE = "Search and play music from YouTube Music"
     
@@ -38,22 +98,43 @@ class YTMusicTUI(App):
         Binding("enter", "play_selected", "Play Song"),
         Binding("s", "focus_search", "Focus Search"),
         Binding("r", "stop_playback", "Stop Current Song"),
+        Binding("shift+r", "start_radio", "Start Radio"),
+        Binding("n", "next_song", "Next Song (Radio)"),
+        Binding("ctrl+r", "stop_radio", "Stop Radio"),
+        Binding("shift+q", "toggle_radio_queue", "Toggle Radio Queue"),
     ]
 
     def __init__(self):
         super().__init__()
         self.current_process = None
         self.songs = []
+        
+        # Radio functionality
+        self.radio_active = False
+        self.radio_queue = []
+        self.radio_current_song = None
+        self.radio_original_song = None
+        self.radio_monitor_thread = None
+        self.radio_queue_visible = False
+        self.stop_radio_monitoring = False
 
     def compose(self) -> ComposeResult:
         """Create child widgets for the app."""
         yield Header()
-        yield Vertical(
-            Static("🔍 Search YouTube Music:", classes="search-label"),
-            Input(placeholder="Enter song name, artist, or album...", id="search-input"),
-            Static("", id="status"),
-            Static("📋 Results:", classes="results-label"),
-            ListView(id="results"),
+        yield Horizontal(
+            Vertical(
+                Static("🔍 Search YouTube Music:", classes="search-label"),
+                Input(placeholder="Enter song name, artist, or album...", id="search-input"),
+                Static("", id="status"),
+                Static("📋 Results:", classes="results-label"),
+                ListView(id="results"),
+                classes="main-panel"
+            ),
+            Vertical(
+                Static("📻 Radio Queue:", classes="radio-label"),
+                ListView(id="radio-queue"),
+                classes="radio-panel"
+            ),
         )
         yield Footer()
 
@@ -68,10 +149,19 @@ class YTMusicTUI(App):
         
         # Focus the search input
         self.query_one("#search-input", Input).focus()
+        
+        # Hide radio queue initially
+        self.query_one(".radio-panel").display = False
 
     def update_status(self, message: str) -> None:
         """Update the status message."""
         status_widget = self.query_one("#status", Static)
+        
+        # Add radio status if active
+        if self.radio_active and self.radio_current_song:
+            radio_msg = f"📻 Radio: {self.radio_current_song.title}"
+            message = f"{message} | {radio_msg}"
+        
         status_widget.update(f"📢 {message}")
 
     async def on_input_submitted(self, event: Input.Submitted) -> None:
@@ -126,15 +216,23 @@ class YTMusicTUI(App):
     async def on_list_view_selected(self, event: ListView.Selected) -> None:
         """Called when user selects a song from the list."""
         if event.item and hasattr(event.item, 'video_id'):
+            # Stop radio if user manually selects a song
+            if self.radio_active:
+                await self.stop_radio()
             await self.play_song(event.item)
 
-    async def play_song(self, song_item: SongItem) -> None:
+    async def play_song(self, song_item: SongItem, from_radio=False) -> None:
         """Play the selected song using mpv."""
         try:
             # Stop current playback if any
             await self.stop_current_playback()
             
             url = f"https://www.youtube.com/watch?v={song_item.video_id}"
+            
+            # Update current song reference
+            if from_radio:
+                self.radio_current_song = song_item
+            
             self.update_status(f"🎵 Playing: {song_item.title} - {song_item.artist}")
             
             # Start mpv in a separate thread to avoid blocking the UI
@@ -149,6 +247,11 @@ class YTMusicTUI(App):
                         url
                     ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                     self.current_process.wait()
+                    
+                    # If radio is active and song ended naturally (not stopped), play next
+                    if self.radio_active and not self.stop_radio_monitoring:
+                        self.call_from_thread(self.play_next_radio_song)
+                        
                 except Exception as e:
                     self.call_from_thread(self.update_status, f"Playback error: {str(e)}")
             
@@ -164,9 +267,177 @@ class YTMusicTUI(App):
             try:
                 self.current_process.terminate()
                 self.current_process = None
+                self.stop_radio_monitoring = True  # Signal to stop radio monitoring
                 self.update_status("⏹️  Playback stopped.")
             except:
                 pass
+
+    async def start_radio(self, song_item: SongItem = None) -> None:
+        """Start radio mode based on current or provided song."""
+        try:
+            # Use provided song or try to get current playing song
+            if not song_item:
+                # Get currently selected song from results
+                results_widget = self.query_one("#results", ListView)
+                if results_widget.highlighted_child:
+                    song_item = results_widget.highlighted_child
+                else:
+                    self.update_status("❌ No song selected to start radio.")
+                    return
+            
+            self.update_status(f"🔄 Starting radio based on: {song_item.title}...")
+            
+            # Get radio playlist from YouTube Music
+            video_id = song_item.video_id
+            watch_playlist = self.ytmusic.get_watch_playlist(videoId=video_id, limit=20)
+            
+            if not watch_playlist or 'tracks' not in watch_playlist:
+                self.update_status("❌ Could not get radio playlist.")
+                return
+            
+            # Clear and populate radio queue
+            self.radio_queue = []
+            radio_queue_widget = self.query_one("#radio-queue", ListView)
+            radio_queue_widget.clear()
+            
+            # Add songs to radio queue
+            for track in watch_playlist['tracks'][:20]:
+                if track.get('videoId'):
+                    title = track.get('title', 'Unknown Title')
+                    
+                    # Get artist name
+                    artist = "Unknown Artist"
+                    if track.get('artists') and len(track['artists']) > 0:
+                        artist = track['artists'][0]['name']
+                    
+                    video_id = track['videoId']
+                    duration = track.get('duration', {}).get('text', '')
+                    
+                    radio_song = SongItem(title, artist, video_id, duration)
+                    self.radio_queue.append(radio_song)
+                    
+                    # Add to UI
+                    queue_item = RadioQueueItem(title, artist, video_id, duration)
+                    radio_queue_widget.append(queue_item)
+            
+            # Set radio state
+            self.radio_active = True
+            self.radio_original_song = song_item
+            self.radio_current_song = song_item
+            self.stop_radio_monitoring = False
+            
+            # Show radio queue
+            self.query_one(".radio-panel").display = True
+            self.radio_queue_visible = True
+            
+            # Start playing the first song in radio
+            if self.radio_queue:
+                first_song = self.radio_queue.pop(0)
+                await self.play_song(first_song, from_radio=True)
+                
+                # Update queue display
+                await self.update_radio_queue_display()
+            
+            self.update_status(f"📻 Radio started! Queue: {len(self.radio_queue)} songs")
+            
+        except Exception as e:
+            self.update_status(f"❌ Error starting radio: {str(e)}")
+
+    async def stop_radio(self) -> None:
+        """Stop radio mode."""
+        self.radio_active = False
+        self.radio_queue = []
+        self.radio_current_song = None
+        self.radio_original_song = None
+        self.stop_radio_monitoring = True
+        
+        # Clear radio queue display
+        radio_queue_widget = self.query_one("#radio-queue", ListView)
+        radio_queue_widget.clear()
+        
+        # Hide radio queue panel
+        self.query_one(".radio-panel").display = False
+        self.radio_queue_visible = False
+        
+        self.update_status("📻 Radio stopped.")
+
+    async def play_next_radio_song(self) -> None:
+        """Play the next song in radio queue."""
+        if not self.radio_active or not self.radio_queue:
+            return
+        
+        # Check if we need to fetch more songs
+        if len(self.radio_queue) < 5:
+            await self.fetch_more_radio_songs()
+        
+        # Play next song
+        if self.radio_queue:
+            next_song = self.radio_queue.pop(0)
+            await self.play_song(next_song, from_radio=True)
+            await self.update_radio_queue_display()
+
+    async def fetch_more_radio_songs(self) -> None:
+        """Fetch more songs for radio queue when running low."""
+        try:
+            if not self.radio_current_song:
+                return
+            
+            # Get more songs based on current playing song
+            watch_playlist = self.ytmusic.get_watch_playlist(
+                videoId=self.radio_current_song.video_id, 
+                limit=15
+            )
+            
+            if watch_playlist and 'tracks' in watch_playlist:
+                radio_queue_widget = self.query_one("#radio-queue", ListView)
+                
+                for track in watch_playlist['tracks'][:15]:
+                    if track.get('videoId'):
+                        title = track.get('title', 'Unknown Title')
+                        
+                        # Get artist name
+                        artist = "Unknown Artist"
+                        if track.get('artists') and len(track['artists']) > 0:
+                            artist = track['artists'][0]['name']
+                        
+                        video_id = track['videoId']
+                        duration = track.get('duration', {}).get('text', '')
+                        
+                        # Avoid duplicates
+                        if not any(s.video_id == video_id for s in self.radio_queue):
+                            radio_song = SongItem(title, artist, video_id, duration)
+                            self.radio_queue.append(radio_song)
+                            
+                            # Add to UI
+                            queue_item = RadioQueueItem(title, artist, video_id, duration)
+                            radio_queue_widget.append(queue_item)
+                
+        except Exception as e:
+            self.update_status(f"Warning: Could not fetch more radio songs: {str(e)}")
+
+    async def update_radio_queue_display(self) -> None:
+        """Update the radio queue display."""
+        if not self.radio_queue_visible:
+            return
+        
+        radio_queue_widget = self.query_one("#radio-queue", ListView)
+        radio_queue_widget.clear()
+        
+        # Add current song at top (if radio is active)
+        if self.radio_active and self.radio_current_song:
+            current_item = RadioQueueItem(
+                self.radio_current_song.title,
+                self.radio_current_song.artist,
+                self.radio_current_song.video_id,
+                self.radio_current_song.duration,
+                is_current=True
+            )
+            radio_queue_widget.append(current_item)
+        
+        # Add queue songs
+        for song in self.radio_queue:
+            queue_item = RadioQueueItem(song.title, song.artist, song.video_id, song.duration)
+            radio_queue_widget.append(queue_item)
 
     def action_play_selected(self) -> None:
         """Action to play the currently selected song."""
@@ -178,9 +449,44 @@ class YTMusicTUI(App):
         """Action to focus the search input."""
         self.query_one("#search-input", Input).focus()
 
-    async def action_stop_playback(self) -> None:
+    def action_stop_playback(self) -> None:
         """Action to stop current playback."""
-        await self.stop_current_playback()
+        self.run_coroutine(self.stop_current_playback())
+
+    def action_start_radio(self) -> None:
+        """Action to start radio based on current song."""
+        if self.radio_active:
+            self.update_status("📻 Radio is already active!")
+            return
+        self.run_coroutine(self.start_radio())
+
+    def action_next_song(self) -> None:
+        """Action to play next song in radio."""
+        if not self.radio_active:
+            self.update_status("❌ Radio is not active.")
+            return
+        self.run_coroutine(self.play_next_radio_song())
+
+    def action_stop_radio(self) -> None:
+        """Action to stop radio mode."""
+        if not self.radio_active:
+            self.update_status("❌ Radio is not active.")
+            return
+        self.run_coroutine(self.stop_radio())
+
+    def action_toggle_radio_queue(self) -> None:
+        """Action to toggle radio queue visibility."""
+        radio_panel = self.query_one(".radio-panel")
+        if self.radio_queue_visible:
+            radio_panel.display = False
+            self.radio_queue_visible = False
+            self.update_status("📻 Radio queue hidden.")
+        else:
+            radio_panel.display = True
+            self.radio_queue_visible = True
+            if self.radio_active:
+                self.run_coroutine(self.update_radio_queue_display())
+            self.update_status("📻 Radio queue shown.")
 
     def action_quit(self) -> None:
         """Action to quit the application."""
@@ -190,6 +496,10 @@ class YTMusicTUI(App):
                 self.current_process.terminate()
             except:
                 pass
+        
+        # Stop radio monitoring
+        self.stop_radio_monitoring = True
+        
         self.exit()
 
 

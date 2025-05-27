@@ -1,26 +1,45 @@
 # 🎵 TUI YouTube Music Player
 
-A beautiful Terminal User Interface (TUI) for YouTube Music that lets you search and play music directly from your terminal using `mpv` as the audio backend.
-
-![TUI YouTube Music Player](https://img.shields.io/badge/python-3.8%2B-blue.svg)
-![License](https://img.shields.io/badge/license-MIT-green.svg)
+A beautiful Terminal User Interface (TUI) for playing YouTube Music in your terminal. Built with Python using `textual` for the interface, `ytmusicapi` for YouTube Music access, and `mpv` for high-quality audio playback.
 
 ## ✨ Features
 
+### Core Features
 - 🔍 **Search YouTube Music** - Find songs, artists, and albums
-- 🎵 **High-quality audio playback** - Uses `mpv` for excellent audio quality
-- ⌨️  **Keyboard navigation** - Fully keyboard-driven interface
-- 🎨 **Modern TUI** - Beautiful interface built with Textual
-- 🚀 **Fast and lightweight** - Minimal resource usage
-- 🔄 **Real-time status updates** - See what's playing and search progress
-- ⏹️  **Playback control** - Stop current song with hotkeys
+- 🎵 **Audio-only playback** - High-quality streaming via mpv
+- ⌨️ **Keyboard navigation** - Full keyboard control for everything
+- 📱 **Clean TUI interface** - Beautiful terminal interface with real-time updates
+- 🎭 **No authentication required** - Works without YouTube Music subscription
 
-## 🛠️ Installation
+### 📻 Radio Mode (NEW!)
+- **Song-based radio** - Start radio from any song to discover similar music
+- **Auto-play queue** - Automatically plays next song when current ends
+- **Smart queue management** - Loads 20 songs, fetches more when running low
+- **Radio queue panel** - See upcoming songs in a dedicated panel
+- **Radio persistence** - Stops when you manually select another song
 
-### 1. System Dependencies
+📖 **[Complete Radio Guide →](RADIO_GUIDE.md)** - Detailed guide with examples and tips
 
-First, install `mpv` (the audio player backend):
+## 🚀 Quick Start
 
+### Prerequisites
+- Python 3.8+ 
+- mpv media player
+
+### Installation
+
+1. **Clone the repository:**
+```bash
+git clone <repository-url>
+cd tui-youmusic
+```
+
+2. **Install dependencies:**
+```bash
+pip install -r requirements.txt
+```
+
+3. **Install mpv:**
 ```bash
 # Ubuntu/Debian
 sudo apt install mpv
@@ -28,138 +47,168 @@ sudo apt install mpv
 # Arch Linux
 sudo pacman -S mpv
 
-# macOS (with Homebrew)
+# macOS
 brew install mpv
-
-# Fedora
-sudo dnf install mpv
 ```
 
-### 2. Python Dependencies
-
-```bash
-# Install Python dependencies
-pip install -r requirements.txt
-
-# Or install manually:
-pip install textual ytmusicapi yt-dlp
-```
-
-### 3. Clone and Run
-
-```bash
-git clone <repository-url>
-cd tui-youmusic
-python ytmusic_tui.py
-```
-
-## 🎮 Usage
-
-### Starting the Application
-
+4. **Run the application:**
 ```bash
 python ytmusic_tui.py
+# OR
+./run.sh
 ```
 
-### Controls
+## 🎹 Controls & Usage
 
+### Basic Navigation
 | Key | Action |
 |-----|--------|
-| `Type + Enter` | Search for music |
-| `Tab` | Togle list selection |
-| `↑ ↓` | Navigate search results |
+| `↑` / `↓` | Navigate through search results |
 | `Enter` | Play selected song |
-| `s` | Focus search bar |
-| `r` | Stop current playback |
-| `q` / `Esc` / `Ctrl+C` | Quit application |
+| `s` | Focus search input |
+| `Escape` / `q` / `Ctrl+C` | Quit application |
+
+### Playback Controls
+| Key | Action |
+|-----|--------|
+| `r` | Stop current song |
+| `Shift+R` | **Start radio** based on selected song |
+| `N` | Next song (radio mode only) |
+| `Ctrl+R` | Stop radio mode |
+
+### Radio Queue
+| Key | Action |
+|-----|--------|
+| `Shift+Q` | Toggle radio queue panel visibility |
+| `Q` | Show/hide radio queue |
 
 ### How to Use
 
-1. **Search**: Type your search query in the search bar and press `Enter`
-2. **Browse**: Use arrow keys to navigate through the results
-3. **Play**: Press `Enter` on any song to start playback
-4. **Control**: Use `r` to stop current song, `s` to search again
+1. **Search for music:** Type in the search box and press Enter
+2. **Navigate results:** Use ↑/↓ arrow keys to browse songs
+3. **Play a song:** Press Enter on any song
+4. **Start radio:** Press `Shift+R` while a song is selected to start radio mode
+5. **Enjoy continuous music:** Radio will automatically play similar songs
+6. **Control radio:** Use `N` for next song, `Shift+Q` to see queue, `Ctrl+R` to stop
+
+## 📻 Radio Mode Explained
+
+### Starting Radio
+- Select any song from search results
+- Press `Shift+R` to start radio based on that song
+- Radio will immediately start playing similar songs
+- The radio queue panel will automatically appear
+
+### How Radio Works
+- **Initial Queue:** Loads 20 similar songs based on your selected track
+- **Auto-play:** When a song ends, automatically plays the next song in queue
+- **Smart Refill:** When queue drops below 5 songs, automatically fetches more
+- **Current Song Display:** Shows currently playing song at top of radio queue
+- **Status Updates:** Status bar shows radio mode and current song
+
+### Radio Controls
+- **Next Song (`N`):** Skip to next song in radio queue
+- **Stop Radio (`Ctrl+R`):** Completely stop radio mode
+- **Queue Toggle (`Shift+Q`):** Show/hide the radio queue panel
+- **Manual Song Selection:** Selecting any song from search stops radio
+
+### Radio Queue Panel
+- **Currently Playing:** Shown at top with 🎵 icon
+- **Upcoming Songs:** Listed below current song
+- **Dynamic Updates:** Queue updates as songs play and new ones are fetched
+- **Toggle Visibility:** Can be hidden/shown with `Shift+Q`
+
+## 🛠️ Technical Details
+
+### Dependencies
+- **textual** (>=0.44.0) - TUI framework
+- **ytmusicapi** (>=1.3.0) - YouTube Music API
+- **yt-dlp** (>=2023.11.16) - YouTube URL extraction
+- **mpv** - Audio playback engine
+
+### Architecture
+- **Async/Await:** Non-blocking UI with async operations
+- **Threading:** Background audio playback to avoid UI freezing
+- **Process Management:** Proper cleanup of mpv processes
+- **Error Handling:** Graceful error handling and user feedback
+
+### Radio Implementation
+- **YouTube Music API:** Uses `get_watch_playlist()` for song recommendations
+- **Queue Management:** Intelligent queue management with automatic refilling
+- **Auto-play Detection:** Monitors mpv process completion for seamless transitions
+- **State Management:** Clean radio state with proper cleanup
 
 ## 🔧 Configuration
 
-The application works out of the box without any configuration. However, you can:
+The application works out of the box with no configuration required. However, you can modify:
 
-- **Authentication**: For better access, you can set up YouTube Music authentication (optional)
-- **Audio Quality**: mpv automatically selects the best available audio quality
-- **Custom mpv settings**: Modify the mpv command in the code for custom audio settings
+- **Search limit:** Change the limit in `perform_search()` (default: 20)
+- **Radio queue size:** Modify radio queue limits in `start_radio()` (default: 20 initial, 15 refill)
+- **Queue refill threshold:** Change when to fetch more songs (default: <5 songs remaining)
 
-## 🎵 Features in Detail
-
-### Search Functionality
-- Search by song title, artist name, or album
-- Returns up to 20 relevant results
-- Shows song duration when available
-- Real-time search status updates
-
-### Audio Playback
-- Audio-only playback (no video)
-- Background playback (doesn't block the UI)
-- Automatic stopping of previous songs when starting new ones
-- Silent operation (no mpv terminal output)
-
-### User Interface
-- Clean, modern TUI design
-- Header with application title
-- Footer with keyboard shortcuts
-- Status messages for user feedback
-- Responsive layout
-
-## 🔍 Troubleshooting
+## 🐛 Troubleshooting
 
 ### Common Issues
 
 **mpv not found:**
 ```bash
-# Make sure mpv is installed and in your PATH
-which mpv
-mpv --version
+# Install mpv first
+sudo apt install mpv  # Ubuntu/Debian
+brew install mpv       # macOS
 ```
 
 **No search results:**
-- Check your internet connection
+- Check internet connection
 - Try different search terms
-- Make sure ytmusicapi is working: `python -c "from ytmusicapi import YTMusic; print('OK')"`
+- Wait a moment and try again
 
-**Playback issues:**
-- Ensure mpv can play YouTube URLs: `mpv --no-video "https://www.youtube.com/watch?v=dQw4w9WgXcQ"`
-- Check audio system is working
-- Try running with verbose output (modify the mpv command in code)
+**Radio not working:**
+- Ensure you have an active internet connection
+- Try starting radio with different songs
+- Check that the selected song is valid
 
-**Permission errors:**
-- Make sure you have internet access
-- Check if any firewall is blocking the connections
+**Audio issues:**
+- Verify mpv works: `mpv --version`
+- Check system audio settings
+- Try playing a local file with mpv
 
-## 🔮 Future Enhancements
+## 📊 Example Usage
 
-- [ ] Playlist support
-- [ ] Search history
-- [ ] Favorite songs
-- [ ] Download for offline playback
-- [ ] Lyrics display
-- [ ] Equalizer controls
-- [ ] Theming support
-- [ ] Configuration file
+```bash
+# Start the application
+python ytmusic_tui.py
+
+# Search for music
+> Type: "The Beatles" → Press Enter
+
+# Navigate and play
+> Use ↑↓ to browse → Press Enter to play
+
+# Start radio
+> Press Shift+R to start Beatles radio
+
+# Control radio
+> Press N for next song
+> Press Shift+Q to see/hide queue
+> Press Ctrl+R to stop radio
+```
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions are welcome! Please feel free to submit a Pull Request. For major changes, please open an issue first to discuss what you would like to change.
 
-## 📜 License
+## 📝 License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## 🙏 Acknowledgments
 
-- [Textual](https://github.com/Textualize/textual) - For the amazing TUI framework
-- [ytmusicapi](https://github.com/sigma67/ytmusicapi) - For YouTube Music API access
-- [yt-dlp](https://github.com/yt-dlp/yt-dlp) - For video URL extraction
-- [mpv](https://mpv.io/) - For high-quality audio playback
+- **YouTube Music** for the music catalog
+- **Textual** for the amazing TUI framework  
+- **ytmusicapi** for YouTube Music API access
+- **mpv** for reliable audio playback
+- **yt-dlp** for YouTube URL extraction
 
 ---
 
-**Note**: This application uses YouTube Music's public API and respects their terms of service. No authentication is required for basic functionality. 
+**Made with ❤️ for music lovers who live in the terminal! 🎵** 
